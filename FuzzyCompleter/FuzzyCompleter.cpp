@@ -30,6 +30,7 @@ public:
 
 protected:
     virtual bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
+    virtual bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const override;
 
 private:
     FuzzyCompleter* completer;
@@ -41,6 +42,8 @@ class FuzzyCompleterPrivate
 public:
     QString local_completion_prefix;
     std::map< long, QList< long > > matched_indexes;
+    std::map< long, long > first_match;
+    std::map< long, long > maximum_sequence;
     QAbstractItemModel* source_model;
 };
 
@@ -69,6 +72,7 @@ void FuzzyCompleter::updateModel()
     FuzzyCompleterProxyModel* proxy_model = new FuzzyCompleterProxyModel( this );
     proxy_model->setSourceModel( d.source_model );
     QCompleter::setModel( proxy_model );
+    proxy_model->sort( 0 );
 }
 
 QStringList FuzzyCompleter::splitPath(const QString &path) const
@@ -154,7 +158,8 @@ void FuzzyCompleterDelegate::initTextDocument( QTextDocument& doc, const QModelI
         cursor.movePosition( QTextCursor::Right, QTextCursor::KeepAnchor );
 
         QTextCharFormat format;
-        format.setFontWeight( QFont::Bold );
+//        format.setFontWeight( QFont::Bold );
+        format.setForeground( QBrush( Qt::red ) );
 
         cursor.mergeCharFormat( format );
     }
@@ -196,6 +201,52 @@ bool FuzzyCompleterProxyModel::filterAcceptsRow(int source_row, const QModelInde
         return false;
 
     completer->d.matched_indexes[ index0.row() ] = matchedPositions;
+    completer->d.first_match[ index0.row() ] = matchedPositions[ 0 ];
+
+    auto calc_max_seq = [ &matchedPositions ]() -> long {
+        long max_seq = 1;
+        long cur_max_seq = 1;
+        for( long i = 1; i < matchedPositions.length(); i++ )
+        {
+            if( matchedPositions[ i - 1 ] == matchedPositions[ i ] - 1 )
+            {
+                cur_max_seq++;
+            }
+            else
+            {
+                if( max_seq < cur_max_seq )
+                    max_seq = cur_max_seq;
+                cur_max_seq = 1;
+            }
+        }
+
+        if( max_seq < cur_max_seq )
+            max_seq = cur_max_seq;
+
+        return max_seq;
+    };
+
+    completer->d.maximum_sequence[ index0.row() ] = calc_max_seq();
 
     return true;
+}
+
+bool FuzzyCompleterProxyModel::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const
+{
+//    QModelIndex source_index_left = sourceModel()->index(source_left, 0, QModelIndex());
+//    QModelIndex source_index_right = sourceModel()->index(source_right, 0, QModelIndex());
+
+    long max_seq_left = completer->d.maximum_sequence[ source_left.row() ];
+    long max_seq_right = completer->d.maximum_sequence[ source_right.row() ];
+
+    if( max_seq_left != max_seq_right )
+        return max_seq_left > max_seq_right;
+
+    long first_match_left = completer->d.first_match[ source_left.row() ];
+    long first_match_right = completer->d.first_match[ source_right.row() ];
+
+    if( first_match_left != first_match_right )
+        return first_match_left < first_match_right;
+
+    return QSortFilterProxyModel::lessThan( source_left, source_right );
 }

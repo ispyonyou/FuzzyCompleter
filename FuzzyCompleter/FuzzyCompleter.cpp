@@ -63,6 +63,8 @@ FuzzyCompleter::~FuzzyCompleter()
 
 void FuzzyCompleter::setModel(QAbstractItemModel *c)
 {
+    Q_ASSERT( c->QObject::parent() != (QObject*)(this) );
+
     d.source_model = c;
     QCompleter::setModel( d.source_model );
 }
@@ -233,9 +235,6 @@ bool FuzzyCompleterProxyModel::filterAcceptsRow(int source_row, const QModelInde
 
 bool FuzzyCompleterProxyModel::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const
 {
-//    QModelIndex source_index_left = sourceModel()->index(source_left, 0, QModelIndex());
-//    QModelIndex source_index_right = sourceModel()->index(source_right, 0, QModelIndex());
-
     long max_seq_left = completer->d.maximum_sequence[ source_left.row() ];
     long max_seq_right = completer->d.maximum_sequence[ source_right.row() ];
 
